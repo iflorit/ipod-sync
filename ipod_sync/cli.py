@@ -22,6 +22,13 @@ console = Console()
 
 COOKIES_PATH = str(COOKIES_FILE)
 
+_CONFIG_KEYS = {
+    "interval":  ("download_interval_hours", int),
+    "limit":     ("max_tracks_per_playlist",  int),
+    "playlists": ("daemon_playlists",         lambda v: [s.strip() for s in v.split(",") if s.strip()] if v.strip() else []),
+    "music-dir": ("music_dir",                str),
+}
+
 
 @click.group()
 @click.version_option(package_name="ipod-sync")
@@ -30,8 +37,67 @@ def cli():
     pass
 
 
+@cli.group("config")
+def config_group():
+    """View and edit configuration."""
+    pass
+
+
+@config_group.command("show")
+def config_show():
+    """Show current configuration."""
+    config = Config.load()
+    table = Table(title=f"Configuration ({CONFIG_FILE})")
+    table.add_column("Key", style="bold")
+    table.add_column("Value")
+    table.add_column("CLI key", style="dim")
+    rows = [
+        ("download_interval_hours", str(config.download_interval_hours), "interval"),
+        ("max_tracks_per_playlist", str(config.max_tracks_per_playlist), "limit"),
+        ("daemon_playlists",        ", ".join(config.daemon_playlists) or "[dim]all[/]", "playlists"),
+        ("music_dir",               config.music_dir, "music-dir"),
+    ]
+    for field, value, key in rows:
+        table.add_row(field, value, key)
+    console.print(table)
+
+
+@config_group.command("set")
+@click.argument("key")
+@click.argument("value")
+def config_set(key, value):
+    """Set a configuration value.
+
+    Keys: interval, limit, playlists, music-dir
+
+    Examples:
+      ipod-sync config set interval 12
+      ipod-sync config set limit 200
+      ipod-sync config set playlists "Running, Workout"
+      ipod-sync config set music-dir /data/music
+    """
+    if key not in _CONFIG_KEYS:
+        valid = ", ".join(_CONFIG_KEYS)
+        console.print(f"[red]Unknown key '{key}'.[/] Valid keys: {valid}")
+        sys.exit(1)
+
+    field_name, coerce = _CONFIG_KEYS[key]
+    try:
+        coerced = coerce(value)
+    except (ValueError, TypeError) as e:
+        console.print(f"[red]Invalid value for '{key}': {e}[/]")
+        sys.exit(1)
+
+    ensure_dirs()
+    config = Config.load()
+    setattr(config, field_name, coerced)
+    config.save()
+    display = ", ".join(coerced) if isinstance(coerced, list) else str(coerced)
+    console.print(f"[green]{key}[/] = {display}")
+
+
 @cli.command()
-@click.option("--limit", "-n", default=50, help="Max tracks to fetch (per playlist with --all-playlists)")
+@click.option("--limit", "-n", default=None, type=int, help="Max tracks to fetch (per playlist with --all-playlists)")
 @click.option("--playlist", "-p", default=None, help="Playlist name to download")
 @click.option("--all-playlists", is_flag=True, help="Download all playlists")
 @click.option("--list-playlists", is_flag=True, help="List available playlists")
@@ -42,6 +108,9 @@ def download(limit, playlist, all_playlists, list_playlists):
 
     ensure_dirs()
     config = Config.load()
+
+    if limit is None:
+        limit = config.max_tracks_per_playlist
 
     if not Path(COOKIES_PATH).exists():
         console.print(f"[red]Cookies file not found at {COOKIES_PATH}[/]")

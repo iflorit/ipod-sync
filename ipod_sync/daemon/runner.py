@@ -99,7 +99,7 @@ class DaemonRunner:
 
                 total = 0
                 for pl in targets:
-                    remote = am.get_playlist_tracks(pl["id"], limit=200)
+                    remote = am.get_playlist_tracks(pl["id"], limit=self.config.max_tracks_per_playlist)
                     to_download, _ = compute_diff(remote)
                     for track in to_download:
                         try:

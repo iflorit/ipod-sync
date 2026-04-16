@@ -19,20 +19,20 @@ sudo apt install -y \
 echo "Installing udev rule for iPod..."
 sudo tee /etc/udev/rules.d/99-ipod.rules > /dev/null << 'EOF'
 # Apple iPod Classic — auto-mount when connected via USB
-ACTION=="add", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", ENV{ID_FS_TYPE}=="vfat", RUN+="/usr/bin/pmount --umask=000 %k ipod"
-ACTION=="remove", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", RUN+="/usr/bin/pumount ipod"
+ACTION=="add", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", ENV{ID_FS_TYPE}=="vfat", RUN+="/usr/bin/pmount --umask=000 /dev/%k ipod"
+ACTION=="remove", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", RUN+="/usr/bin/pumount /media/ipod"
 EOF
 sudo udevadm control --reload-rules
 echo "  -> /etc/udev/rules.d/99-ipod.rules installed"
 
 # --- gamdl ---
 echo "Installing gamdl..."
-pip install -q gamdl
+pip install -q --break-system-packages gamdl
 
 # --- ipod-sync ---
 echo "Installing ipod-sync..."
 cd "$(dirname "$0")/.."
-pip install -e .
+pip install -q --break-system-packages -e .
 
 # --- Create config dir and cookies template ---
 COOKIES_FILE="$HOME/.config/ipod-sync/cookies.txt"
@@ -76,6 +76,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=$USER
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin
 ExecStart=$IPOD_SYNC daemon start --foreground
 Restart=on-failure
 RestartSec=30

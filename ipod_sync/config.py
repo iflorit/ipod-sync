@@ -28,6 +28,7 @@ class Config:
     apple_id: str = ""
     music_dir: str = field(default_factory=_default_music_dir)
     download_interval_hours: int = 6
+    max_tracks_per_playlist: int = 100
     daemon_playlists: list = field(default_factory=list)
 
     @classmethod
