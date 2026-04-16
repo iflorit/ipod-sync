@@ -27,16 +27,15 @@ It runs on a Mac or any Raspberry Pi. The long-term goal is a small Pi device th
 - Sync to iPod Classic with correct metadata (title, artist, album, genre, duration)
 - Playlist support: named playlists appear on the iPod
 - Automatic iPod detection (macOS + Linux)
-- Works on Mac (Apple Silicon / Intel) and Raspberry Pi
+- Works on Mac (Apple Silicon / Intel) and any Raspberry Pi
+- **Headless daemon** — runs on a Pi with no screen or keyboard. Polls Apple Music on a schedule, detects iPod on USB connect, syncs, and ejects automatically. Managed as a systemd service.
 
 ## What's coming
 
 - **Album artwork** — the code is ready, blocked on recompiling libgpod with gdk-pixbuf
 - **Web UI** with iTunes aesthetic — manage cookies, select playlists, monitor sync progress
-- **Headless daemon** — runs on a Pi with no screen/keyboard: polls Apple Music periodically, detects iPod on connect, syncs, and ejects automatically
 - **Sync log written to the iPod's Notes** — after each sync, ipod-sync writes a plain-text note directly to the iPod. Open the Notes app on the iPod to see a reverse-chronological log of what was synced: which playlists and tracks were added or removed each day, and any errors (expired cookies, download failures). No app needed — the iPod itself shows you what happened.
 - **Format transcoding** — convert FLAC, OGG, and other formats to AAC/ALAC before sync
-- **Pi support** — configure once, leave running, plug in iPod
 
 ---
 
@@ -155,6 +154,38 @@ ipod-sync sync
 # Check status
 ipod-sync status
 ```
+
+### Headless daemon (Raspberry Pi)
+
+Configure once, leave running. The daemon polls Apple Music on a schedule and syncs the iPod automatically when it's plugged in.
+
+```bash
+# First-time configuration (works over SSH — no screen needed)
+ipod-sync setup
+
+# Start the daemon in the background
+ipod-sync daemon start
+
+# Check whether it's running and see recent log entries
+ipod-sync daemon status
+
+# Stop the daemon
+ipod-sync daemon stop
+```
+
+On a Raspberry Pi installed via `scripts/install-pi.sh`, the daemon runs as a systemd service and starts automatically on boot:
+
+```bash
+sudo systemctl start ipod-sync
+sudo systemctl status ipod-sync
+journalctl -u ipod-sync -f   # follow logs
+```
+
+**What it does automatically:**
+1. Every N hours (configurable, default 6): downloads new tracks from your configured playlists
+2. Detects when the iPod is plugged in via USB
+3. Syncs all tracks to the iPod
+4. Ejects the iPod when done — safe to unplug
 
 ---
 

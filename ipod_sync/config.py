@@ -18,6 +18,9 @@ def _default_music_dir() -> str:
 CONFIG_DIR = Path.home() / ".config" / "ipod-sync"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 LIBRARY_INDEX = CONFIG_DIR / "library.json"
+COOKIES_FILE = CONFIG_DIR / "cookies.txt"
+PID_FILE = CONFIG_DIR / "daemon.pid"
+LOG_FILE = CONFIG_DIR / "daemon.log"
 
 
 @dataclass
@@ -25,6 +28,7 @@ class Config:
     apple_id: str = ""
     music_dir: str = field(default_factory=_default_music_dir)
     download_interval_hours: int = 6
+    daemon_playlists: list = field(default_factory=list)
 
     @classmethod
     def load(cls) -> "Config":
