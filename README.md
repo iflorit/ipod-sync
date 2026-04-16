@@ -223,6 +223,20 @@ Add your terminal or Python binary in: **System Settings → Privacy & Security 
 
 ---
 
+## Syncing from Linux / Raspberry Pi — one-time iPod preparation
+
+If your iPod was set up on a Mac, its filesystem is HFS+ with journaling enabled. Linux mounts journaled HFS+ as read-only and cannot write the iTunesDB.
+
+**Fix (run once from macOS, takes 2 seconds, no data loss):**
+
+```bash
+sudo diskutil disableJournal /Volumes/iPod
+```
+
+After this, the iPod mounts read-write on Linux and the Pi daemon can sync to it normally. You only need to do this once — the setting persists on the iPod.
+
+---
+
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE)
