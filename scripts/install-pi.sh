@@ -61,8 +61,14 @@ else
     echo "  -> Cookies file already exists: $COOKIES_FILE"
 fi
 
+# --- sudoers: allow mount/umount without password (needed for HFS+ iPods) ---
+echo "Installing sudoers rule for iPod mount..."
+echo "$USER ALL=(root) NOPASSWD: /bin/mount, /bin/umount, /usr/bin/pmount, /usr/bin/pumount" | sudo tee /etc/sudoers.d/ipod-mount > /dev/null
+sudo chmod 440 /etc/sudoers.d/ipod-mount
+echo "  -> /etc/sudoers.d/ipod-mount installed"
+
 # --- systemd service ---
-PYTHON=$(which python3)
+PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 IPOD_SYNC=$(which ipod-sync 2>/dev/null || echo "$HOME/.local/bin/ipod-sync")
 SERVICE_FILE="/etc/systemd/system/ipod-sync.service"
 
@@ -75,8 +81,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=$USER
+User=root
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin
+Environment=PYTHONPATH=$HOME/.local/lib/python${PYTHON_VERSION}/site-packages
+Environment=HOME=$HOME
+WorkingDirectory=$HOME
 ExecStart=$IPOD_SYNC daemon start --foreground
 Restart=on-failure
 RestartSec=30

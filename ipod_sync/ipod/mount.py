@@ -63,7 +63,7 @@ def _mount_macos() -> str:
 
 
 def _mount_linux(device: str = "") -> str:
-    """Mount iPod on Linux using pmount."""
+    """Mount iPod on Linux."""
     mount_point = "/media/ipod"
 
     # Already mounted?
@@ -72,7 +72,6 @@ def _mount_linux(device: str = "") -> str:
         return mount_point
 
     if not device:
-        # Auto-detect device block
         device = _find_ipod_block_device()
         if not device:
             raise MountError(
@@ -80,25 +79,36 @@ def _mount_linux(device: str = "") -> str:
                 "Try: lsblk -o NAME,VENDOR,MODEL"
             )
 
-    result = subprocess.run(
-        ["pmount", "--umask=000", device, "ipod"],
-        capture_output=True, text=True, timeout=30,
+    Path(mount_point).mkdir(parents=True, exist_ok=True)
+
+    # Detect filesystem type
+    blkid = subprocess.run(
+        ["blkid", "-o", "value", "-s", "TYPE", device],
+        capture_output=True, text=True, timeout=10,
     )
-    if result.returncode != 0:
-        # Fallback to udisksctl
+    fstype = blkid.stdout.strip()
+
+    if fstype == "hfsplus":
+        # HFS+ (Mac-formatted iPod): requires sudo + force to get rw access.
+        # Run with sudo — expects NOPASSWD entry in /etc/sudoers.d/ipod-mount.
         result = subprocess.run(
-            ["udisksctl", "mount", "-b", device],
+            ["sudo", "mount", "-t", "hfsplus", "-o", "rw,force,umask=000", device, mount_point],
             capture_output=True, text=True, timeout=30,
         )
-        if result.returncode != 0:
-            raise MountError(f"Error mounting iPod: {result.stderr}")
-        # Parse mount point from udisksctl output
-        for line in result.stdout.splitlines():
-            if "Mounted" in line and "at" in line:
-                return line.split("at")[-1].strip().rstrip(".")
-        raise MountError("Mounted but could not determine the mount point")
+        if result.returncode == 0:
+            # Make mount point writable to all so daemon (non-root) can write
+            subprocess.run(["sudo", "chmod", "777", mount_point], timeout=5)
+            return mount_point
+    else:
+        # FAT32 or other: use pmount
+        result = subprocess.run(
+            ["pmount", "--umask=000", device, "ipod"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            return mount_point
 
-    return mount_point
+    raise MountError(f"Error mounting iPod ({fstype}): {result.stderr.strip()}")
 
 
 def _find_ipod_block_device() -> str | None:
