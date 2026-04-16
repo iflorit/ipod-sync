@@ -144,7 +144,12 @@ def download(limit, playlist, all_playlists, list_playlists):
         total_errors = 0
         for idx, p in enumerate(pls, 1):
             console.print(f"\n[bold][{idx}/{len(pls)}] {p['name']}[/]")
-            remote = am.get_playlist_tracks(p["id"], limit=limit)
+            try:
+                remote = am.get_playlist_tracks(p["id"], limit=limit)
+            except Exception as e:
+                console.print(f"  [red]Skipped: {e}[/]")
+                total_errors += 1
+                continue
             ok, errors = _download_tracks(config, remote, p["name"])
             total_ok += ok
             total_errors += errors

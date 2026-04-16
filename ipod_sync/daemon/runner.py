@@ -100,7 +100,11 @@ class DaemonRunner:
 
                 total = 0
                 for pl in targets:
-                    remote = am.get_playlist_tracks(pl["id"], limit=self.config.max_tracks_per_playlist)
+                    try:
+                        remote = am.get_playlist_tracks(pl["id"], limit=self.config.max_tracks_per_playlist)
+                    except Exception as e:
+                        self._log.warning(f"Skipping playlist {pl['name']!r}: {e}")
+                        continue
                     to_download, _ = compute_diff(remote)
                     for track in to_download:
                         try:
