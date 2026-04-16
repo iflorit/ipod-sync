@@ -34,7 +34,7 @@ It runs on a Mac or any Raspberry Pi. The long-term goal is a small Pi device th
 - **Album artwork** — the code is ready, blocked on recompiling libgpod with gdk-pixbuf
 - **Web UI** with iTunes aesthetic — manage cookies, select playlists, monitor sync progress
 - **Auto-sync daemon** — detects iPod on connect, syncs, then ejects automatically
-- **Pi Zero support** — run the whole thing headless on a $15 computer
+- **Pi support** — run the whole thing headless on a Pi
 
 ---
 
