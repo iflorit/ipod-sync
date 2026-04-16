@@ -45,10 +45,37 @@ echo "Instalando ipod-sync..."
 cd "$(dirname "$0")/.."
 pip install -e .
 
+# --- Create config dir and cookies template ---
+COOKIES_FILE="$HOME/.config/ipod-sync/cookies.txt"
+mkdir -p "$HOME/.config/ipod-sync"
+
+if [ ! -f "$COOKIES_FILE" ]; then
+    cat > "$COOKIES_FILE" << 'COOKIESEOF'
+# Netscape HTTP Cookie File
+# https://curl.se/docs/http-cookies.html
+#
+# ipod-sync only needs the media-user-token cookie from music.apple.com.
+#
+# How to get it:
+#   1. Log in to https://music.apple.com in your browser
+#   2. Install "Get cookies.txt LOCALLY" (Chrome) or "cookies.txt" (Firefox)
+#   3. Export cookies from music.apple.com in Netscape format
+#   4. Copy the "media-user-token" line here, replacing the example below
+#
+# Format: domain<TAB>flag<TAB>path<TAB>secure<TAB>expiry<TAB>name<TAB>value
+#
+.music.apple.com	TRUE	/	TRUE	1893456000	media-user-token	REPLACE_WITH_YOUR_TOKEN
+COOKIESEOF
+    echo "  -> Fichero de cookies creado en: $COOKIES_FILE"
+    echo "     Reemplaza REPLACE_WITH_YOUR_TOKEN con tu token real"
+else
+    echo "  -> Fichero de cookies ya existe: $COOKIES_FILE"
+fi
+
 echo ""
 echo "=== Instalacion completada ==="
 echo ""
 echo "Proximos pasos:"
-echo "  1. Exporta tus cookies de music.apple.com (formato Netscape)"
-echo "     y guardalas en: ~/.config/ipod-sync/cookies.txt"
+echo "  1. Edita ~/.config/ipod-sync/cookies.txt:"
+echo "     Reemplaza REPLACE_WITH_YOUR_TOKEN con tu media-user-token de music.apple.com"
 echo "  2. Ejecuta: ipod-sync download --list-playlists"

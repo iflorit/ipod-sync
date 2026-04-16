@@ -33,8 +33,10 @@ It runs on a Mac or any Raspberry Pi. The long-term goal is a small Pi device th
 
 - **Album artwork** — the code is ready, blocked on recompiling libgpod with gdk-pixbuf
 - **Web UI** with iTunes aesthetic — manage cookies, select playlists, monitor sync progress
-- **Auto-sync daemon** — detects iPod on connect, syncs, then ejects automatically
-- **Pi support** — run the whole thing headless on a Pi
+- **Headless daemon** — runs on a Pi with no screen/keyboard: polls Apple Music periodically, detects iPod on connect, syncs, and ejects automatically
+- **Sync log written to the iPod's Notes** — after each sync, ipod-sync writes a plain-text note directly to the iPod. Open the Notes app on the iPod to see a reverse-chronological log of what was synced: which playlists and tracks were added or removed each day, and any errors (expired cookies, download failures). No app needed — the iPod itself shows you what happened.
+- **Format transcoding** — convert FLAC, OGG, and other formats to AAC/ALAC before sync
+- **Pi support** — configure once, leave running, plug in iPod
 
 ---
 
@@ -85,16 +87,50 @@ On macOS, libgpod must be compiled from source — see [the build notes](tasks/l
 
 ## Setup: cookies
 
-ipod-sync authenticates with Apple Music using your browser cookies. You do **not** need to provide your Apple ID password.
+ipod-sync authenticates with Apple Music using your browser session cookie. You do **not** need to provide your Apple ID password.
+
+### 1. Create the cookies file
+
+The installation scripts create the file automatically. If you're setting up manually:
+
+```bash
+mkdir -p ~/.config/ipod-sync
+touch ~/.config/ipod-sync/cookies.txt
+```
+
+### 2. Cookie file format
+
+`~/.config/ipod-sync/cookies.txt` must be in **Netscape format** — one cookie per line, fields separated by tabs:
+
+```
+# Netscape HTTP Cookie File
+# https://curl.se/docs/http-cookies.html
+
+.music.apple.com	TRUE	/	TRUE	1893456000	media-user-token	eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJBTVBfQVBJIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE4OTM0NTYwMDB9.REPLACE_WITH_YOUR_TOKEN
+```
+
+The only cookie ipod-sync needs is `media-user-token`. The other fields:
+
+| Field | Value | Notes |
+|---|---|---|
+| domain | `.music.apple.com` | leading dot = all subdomains |
+| flag | `TRUE` | subdomain match enabled |
+| path | `/` | |
+| secure | `TRUE` | HTTPS only |
+| expiry | Unix timestamp | e.g. `1893456000` = year 2030 |
+| name | `media-user-token` | must be exactly this |
+| value | `eyJhbGci...` | your JWT token (long string) |
+
+### 3. Get your token
 
 1. Log in to [music.apple.com](https://music.apple.com) in your browser
-2. Install a cookie export extension (e.g. *Get cookies.txt LOCALLY* for Chrome)
+2. Install a cookie export extension (e.g. *Get cookies.txt LOCALLY* for Chrome/Firefox)
 3. Export cookies from `music.apple.com` in **Netscape format**
-4. Save the file to `~/.config/ipod-sync/cookies.txt`
+4. Copy the line containing `media-user-token` into `~/.config/ipod-sync/cookies.txt`
 
-The developer token is extracted automatically from the Apple Music web player JS — no manual steps needed.
+The developer token (for the Apple Music API) is extracted automatically from the web player — no manual steps needed for that.
 
-Cookies expire roughly every few months. When you get a `401 Sesion expirada` error, re-export them.
+Cookies expire roughly every few months. When you get a `Session expired` error, re-export the `media-user-token` line and replace the value in `cookies.txt`.
 
 ---
 
@@ -104,10 +140,13 @@ Cookies expire roughly every few months. When you get a `401 Sesion expirada` er
 # List your Apple Music playlists
 ipod-sync playlists
 
-# Download a playlist (up to 100 tracks)
-ipod-sync download --playlist "Canciones favoritas" --limit 100
+# Download a single playlist (up to 100 tracks)
+ipod-sync download --playlist "My Playlist" --limit 100
 
-# Download from your full library
+# Download all your playlists (up to 50 tracks each)
+ipod-sync download --all-playlists --limit 50
+
+# Download from your full library (no playlist grouping)
 ipod-sync download --limit 50
 
 # Sync to connected iPod

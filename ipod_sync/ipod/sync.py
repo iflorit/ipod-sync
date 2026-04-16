@@ -34,12 +34,12 @@ def sync_to_ipod(ipod_mount: str, config: Config, on_progress=None) -> tuple[int
     """
     ipod_control = Path(ipod_mount) / "iPod_Control"
     if not ipod_control.exists():
-        raise SyncError(f"iPod_Control no encontrado en {ipod_mount}")
+        raise SyncError(f"iPod_Control not found at {ipod_mount}")
 
     index = load_library_index()
     local_tracks = index.get("tracks", {})
     if not local_tracks:
-        raise SyncError("Biblioteca local vacia. Ejecuta 'ipod-sync download' primero.")
+        raise SyncError("Local library is empty. Run 'ipod-sync download' first.")
 
     # Build ordered track list and a key→index map for playlist resolution
     tracks_to_sync = []
@@ -62,7 +62,7 @@ def sync_to_ipod(ipod_mount: str, config: Config, on_progress=None) -> tuple[int
         })
 
     if not tracks_to_sync:
-        raise SyncError("No hay ficheros de audio validos para sincronizar.")
+        raise SyncError("No valid audio files to sync.")
 
     # Resolve named playlists: keys → indices in tracks_to_sync
     playlists: dict[str, list[int]] | None = None
@@ -76,12 +76,12 @@ def sync_to_ipod(ipod_mount: str, config: Config, on_progress=None) -> tuple[int
 
     # Clean old audio files from iPod (gpod_ctypes will also delete the old DB)
     if on_progress:
-        on_progress("info", "Limpiando iPod...", 0, 0)
+        on_progress("info", "Cleaning iPod...", 0, 0)
     removed = _clean_ipod_music(ipod_mount)
 
     # Sync via libgpod — copies files and writes iTunesDB
     if on_progress:
-        on_progress("info", f"Sincronizando {len(tracks_to_sync)} canciones via libgpod...", 0, 0)
+        on_progress("info", f"Syncing {len(tracks_to_sync)} tracks via libgpod...", 0, 0)
 
     for i, t in enumerate(tracks_to_sync, 1):
         if on_progress:

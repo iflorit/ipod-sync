@@ -56,31 +56,31 @@ class AppleMusicClient:
                 parts = line.strip().split("\t")
                 if len(parts) >= 7 and parts[5] == "media-user-token":
                     return parts[6]
-        raise LibraryError("media-user-token no encontrado en cookies.txt")
+        raise LibraryError("media-user-token not found in cookies.txt")
 
     def _get_developer_token(self) -> str:
         c = httpx.Client(headers=HEADERS, follow_redirects=True, timeout=30)
         r = c.get(HOMEPAGE)
         match = re.search(r"/(assets/index-legacy[~-][^/\"]+\.js)", r.text)
         if not match:
-            raise LibraryError("index.js no encontrado en Apple Music")
+            raise LibraryError("index.js not found in Apple Music web player")
         r = c.get(f"{HOMEPAGE}/{match.group(1)}")
         tok = re.search(r'(?=eyJh)(.*?)(?=")', r.text)
         if not tok:
-            raise LibraryError("Developer token no encontrado")
+            raise LibraryError("Developer token not found")
         c.close()
         return tok.group(1)
 
     def _get_storefront(self) -> str:
         r = self.client.get(f"{AMP_API}/v1/me/account", params={"meta": "subscription"})
         if r.status_code != 200:
-            raise LibraryError(f"Error cuenta: {r.status_code}")
+            raise LibraryError(f"Account error: {r.status_code}")
         return r.json().get("meta", {}).get("subscription", {}).get("storefront", "us")
 
     def _api(self, endpoint: str, params: dict | None = None) -> dict:
         r = self.client.get(f"{AMP_API}{endpoint}", params=params or {})
         if r.status_code in (401, 403):
-            raise LibraryError("Sesion expirada. Renueva las cookies.")
+            raise LibraryError("Session expired. Re-export your cookies from music.apple.com.")
         if r.status_code != 200:
             raise LibraryError(f"API error {r.status_code}: {r.text[:200]}")
         return r.json()

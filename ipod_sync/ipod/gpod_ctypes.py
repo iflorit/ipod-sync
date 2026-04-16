@@ -26,9 +26,9 @@ def _find_libgpod() -> str:
     if found:
         return found
     raise GpodError(
-        "libgpod no encontrado. Instala con:\n"
+        "libgpod not found. Install with:\n"
         "  Linux: apt install libgpod-dev\n"
-        "  macOS: compilar from source (ver scripts/install-mac.sh)"
+        "  macOS: build from source (see scripts/install-mac.sh)"
     )
 
 
@@ -253,14 +253,14 @@ def _create_fresh_db(mount_bytes: bytes) -> int:
     """Create a new empty iTunesDB with a valid master playlist."""
     db = _lib.itdb_new()
     if not db:
-        raise GpodError("itdb_new() retornó NULL")
+        raise GpodError("itdb_new() returned NULL")
 
     _lib.itdb_set_mountpoint(db, mount_bytes)
 
     mpl = _lib.itdb_playlist_new(b"iPod", 0)
     if not mpl:
         _lib.itdb_free(db)
-        raise GpodError("itdb_playlist_new() retornó NULL")
+        raise GpodError("itdb_playlist_new() returned NULL")
 
     _lib.itdb_playlist_set_mpl(mpl)
     _lib.itdb_playlist_add(db, mpl, -1)
@@ -292,7 +292,7 @@ def sync_tracks_to_ipod(
     mpl = _lib.itdb_playlist_mpl(db)
     if not mpl:
         _lib.itdb_free(db)
-        raise GpodError("Master playlist no encontrada tras inicialización")
+        raise GpodError("Master playlist not found after initialization")
 
     # Build named playlists if requested
     playlist_ptrs: dict[str, int] = {}

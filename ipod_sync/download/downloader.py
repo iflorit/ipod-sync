@@ -18,7 +18,7 @@ def download_track(config: Config, track: dict, cookies_path: str) -> str:
     """
     url = track.get("url", "")
     if not url:
-        raise DownloadError(f"Sin URL para '{track['title']}'")
+        raise DownloadError(f"No URL for '{track['title']}'")
 
     output_dir = config.music_dir
 
@@ -48,7 +48,7 @@ def download_track(config: Config, track: dict, cookies_path: str) -> str:
     if found:
         return str(found)
 
-    raise DownloadError(f"Fichero no encontrado tras descarga: {track['title']}")
+    raise DownloadError(f"File not found after download: {track['title']}")
 
 
 def download_tracks_batch(config: Config, tracks: list[dict], cookies_path: str) -> list[str]:

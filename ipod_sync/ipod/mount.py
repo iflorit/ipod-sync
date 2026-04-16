@@ -20,7 +20,7 @@ def mount_ipod(device: str = "") -> str:
         return _mount_macos()
     elif system == "Linux":
         return _mount_linux(device)
-    raise MountError(f"Plataforma no soportada: {system}")
+    raise MountError(f"Unsupported platform: {system}")
 
 
 def unmount_ipod(mount_point: str) -> None:
@@ -36,7 +36,7 @@ def unmount_ipod(mount_point: str) -> None:
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
-            raise MountError(f"Error expulsando iPod: {result.stderr}")
+            raise MountError(f"Error ejecting iPod: {result.stderr}")
     elif system == "Linux":
         # Try pumount first (matches pmount)
         result = subprocess.run(
@@ -50,7 +50,7 @@ def unmount_ipod(mount_point: str) -> None:
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode != 0:
-                raise MountError(f"Error desmontando iPod: {result.stderr}")
+                raise MountError(f"Error unmounting iPod: {result.stderr}")
 
 
 def _mount_macos() -> str:
@@ -59,7 +59,7 @@ def _mount_macos() -> str:
     for vol in volumes.iterdir():
         if vol.is_dir() and (vol / "iPod_Control").exists():
             return str(vol)
-    raise MountError("iPod no encontrado en /Volumes/. Asegurate de que esta conectado.")
+    raise MountError("iPod not found in /Volumes/. Make sure it is connected.")
 
 
 def _mount_linux(device: str = "") -> str:
@@ -76,8 +76,8 @@ def _mount_linux(device: str = "") -> str:
         device = _find_ipod_block_device()
         if not device:
             raise MountError(
-                "iPod conectado pero no se encuentra el dispositivo de bloque.\n"
-                "Prueba: lsblk -o NAME,VENDOR,MODEL"
+                "iPod connected but block device not found.\n"
+                "Try: lsblk -o NAME,VENDOR,MODEL"
             )
 
     result = subprocess.run(
@@ -91,12 +91,12 @@ def _mount_linux(device: str = "") -> str:
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
-            raise MountError(f"Error montando iPod: {result.stderr}")
+            raise MountError(f"Error mounting iPod: {result.stderr}")
         # Parse mount point from udisksctl output
         for line in result.stdout.splitlines():
             if "Mounted" in line and "at" in line:
                 return line.split("at")[-1].strip().rstrip(".")
-        raise MountError("Montado pero no se pudo determinar el punto de montaje")
+        raise MountError("Mounted but could not determine the mount point")
 
     return mount_point
 
