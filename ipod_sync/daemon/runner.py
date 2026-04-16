@@ -17,17 +17,18 @@ class DaemonRunner:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 
-        file_handler = logging.FileHandler(LOG_FILE)
-        file_handler.setFormatter(fmt)
-
         root = logging.getLogger()
         root.setLevel(logging.INFO)
-        root.addHandler(file_handler)
 
         if foreground:
+            # systemd captures stdout → daemon.log; don't double-write via FileHandler
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(fmt)
             root.addHandler(console_handler)
+        else:
+            file_handler = logging.FileHandler(LOG_FILE)
+            file_handler.setFormatter(fmt)
+            root.addHandler(file_handler)
 
         self._log = logging.getLogger("daemon")
 
