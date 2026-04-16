@@ -19,7 +19,7 @@ sudo apt install -y \
 echo "Installing udev rule for iPod..."
 sudo tee /etc/udev/rules.d/99-ipod.rules > /dev/null << 'EOF'
 # Apple iPod Classic — auto-mount when connected via USB
-ACTION=="add", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", ENV{ID_FS_TYPE}=="vfat", RUN+="/usr/bin/pmount --umask=000 /dev/%k ipod"
+ACTION=="add", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", ENV{DEVTYPE}=="partition", RUN+="/usr/bin/pmount --umask=000 /dev/%k ipod"
 ACTION=="remove", SUBSYSTEM=="block", ATTRS{idVendor}=="05ac", RUN+="/usr/bin/pumount /media/ipod"
 EOF
 sudo udevadm control --reload-rules
