@@ -40,11 +40,11 @@ class DaemonRunner:
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
 
-        interval = self.config.download_interval_hours
         playlists = self.config.daemon_playlists
 
         self._log.info(f"Daemon started (PID {os.getpid()})")
-        self._log.info(f"Download interval: {interval}h | Playlists: {playlists or 'all'}")
+        h, m = self.config.download_time
+        self._log.info(f"Download time: {h:02d}:{m:02d} daily | Playlists: {playlists or 'all'}")
 
         dl_thread = threading.Thread(target=self._download_loop, name="downloader", daemon=True)
         watch_thread = threading.Thread(target=self._ipod_loop, name="watcher", daemon=True)
@@ -59,8 +59,18 @@ class DaemonRunner:
         self._log.info(f"Signal {signum} received, stopping...")
         self._stop.set()
 
+    def _secs_until_next_run(self) -> float:
+        """Seconds until next scheduled download (daily at download_time)."""
+        from datetime import datetime, timedelta
+        hour, minute = self.config.download_time
+        now = datetime.now()
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        return (target - now).total_seconds()
+
     def _download_loop(self) -> None:
-        """Download configured playlists every N hours."""
+        """Download configured playlists once a day at the configured time."""
         from pathlib import Path
 
         from ipod_sync.download.downloader import download_track, verify_track
@@ -71,8 +81,6 @@ class DaemonRunner:
             mark_downloaded,
             save_playlist,
         )
-
-        interval_secs = self.config.download_interval_hours * 3600
 
         while not self._stop.is_set():
             self._log.info("Starting scheduled download...")
@@ -123,7 +131,10 @@ class DaemonRunner:
             except Exception as e:
                 self._log.error(f"Download loop error: {e}")
 
-            self._stop.wait(timeout=interval_secs)
+            wait = self._secs_until_next_run()
+            h, m = self.config.download_time
+            self._log.info(f"Next download scheduled at {h:02d}:{m:02d} (in {wait/3600:.1f}h)")
+            self._stop.wait(timeout=wait)
 
     def _ipod_loop(self) -> None:
         """Poll for iPod connection; sync and eject when detected."""

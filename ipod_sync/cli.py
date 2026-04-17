@@ -22,8 +22,15 @@ console = Console()
 
 COOKIES_PATH = str(COOKIES_FILE)
 
+def _parse_time(v: str) -> list:
+    """Parse HH:MM into [hour, minute]."""
+    parts = v.strip().split(":")
+    if len(parts) != 2:
+        raise ValueError("expected HH:MM format")
+    return [int(parts[0]), int(parts[1])]
+
 _CONFIG_KEYS = {
-    "interval":  ("download_interval_hours", int),
+    "time":      ("download_time",            _parse_time),
     "limit":     ("max_tracks_per_playlist",  int),
     "playlists": ("daemon_playlists",         lambda v: [s.strip() for s in v.split(",") if s.strip()] if v.strip() else []),
     "music-dir": ("music_dir",                str),
@@ -51,8 +58,9 @@ def config_show():
     table.add_column("Key", style="bold")
     table.add_column("Value")
     table.add_column("CLI key", style="dim")
+    h, m = config.download_time
     rows = [
-        ("download_interval_hours", str(config.download_interval_hours), "interval"),
+        ("download_time",           f"{h:02d}:{m:02d}", "time"),
         ("max_tracks_per_playlist", str(config.max_tracks_per_playlist), "limit"),
         ("daemon_playlists",        ", ".join(config.daemon_playlists) or "[dim]all[/]", "playlists"),
         ("music_dir",               config.music_dir, "music-dir"),
@@ -92,7 +100,12 @@ def config_set(key, value):
     config = Config.load()
     setattr(config, field_name, coerced)
     config.save()
-    display = ", ".join(coerced) if isinstance(coerced, list) else str(coerced)
+    if key == "time":
+        display = f"{coerced[0]:02d}:{coerced[1]:02d}"
+    elif isinstance(coerced, list):
+        display = ", ".join(coerced)
+    else:
+        display = str(coerced)
     console.print(f"[green]{key}[/] = {display}")
 
 
@@ -321,12 +334,12 @@ def setup():
     ensure_dirs()
     config = Config.load()
 
-    interval = click.prompt(
-        "Download interval (hours)",
-        default=config.download_interval_hours,
-        type=int,
+    h, m = config.download_time
+    time_str = click.prompt(
+        "Daily download time (HH:MM)",
+        default=f"{h:02d}:{m:02d}",
     )
-    config.download_interval_hours = interval
+    config.download_time = _parse_time(time_str)
 
     music_dir = click.prompt("Music storage directory", default=config.music_dir)
     config.music_dir = music_dir
@@ -346,8 +359,9 @@ def setup():
 
     config.save()
     console.print(f"\n[green]Config saved to {CONFIG_FILE}[/]")
+    h, m = config.download_time
     console.print(f"  Music directory:   {config.music_dir}")
-    console.print(f"  Download interval: {config.download_interval_hours}h")
+    console.print(f"  Download time:     {h:02d}:{m:02d} daily")
     console.print(f"  Playlists:         {', '.join(config.daemon_playlists) or 'all'}")
 
     if not COOKIES_FILE.exists():
