@@ -38,19 +38,16 @@ def unmount_ipod(mount_point: str) -> None:
         if result.returncode != 0:
             raise MountError(f"Error ejecting iPod: {result.stderr}")
     elif system == "Linux":
-        # Try pumount first (matches pmount)
-        result = subprocess.run(
+        # HFS+ mounts require sudo umount; try that first, then pumount/udisksctl
+        for cmd in [
+            ["sudo", "umount", mount_point],
             ["pumount", mount_point],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode != 0:
-            # Fallback to udisksctl
-            result = subprocess.run(
-                ["udisksctl", "unmount", "-b", mount_point],
-                capture_output=True, text=True, timeout=30,
-            )
-            if result.returncode != 0:
-                raise MountError(f"Error unmounting iPod: {result.stderr}")
+            ["udisksctl", "unmount", "-b", mount_point],
+        ]:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return
+        raise MountError(f"Error unmounting iPod: {result.stderr}")
 
 
 def _mount_macos() -> str:
@@ -81,12 +78,12 @@ def _mount_linux(device: str = "") -> str:
 
     Path(mount_point).mkdir(parents=True, exist_ok=True)
 
-    # Detect filesystem type
-    blkid = subprocess.run(
-        ["blkid", "-o", "value", "-s", "TYPE", device],
+    # Detect filesystem type via lsblk (blkid may not be installed)
+    lsblk_fstype = subprocess.run(
+        ["lsblk", "-o", "FSTYPE", "-n", device],
         capture_output=True, text=True, timeout=10,
     )
-    fstype = blkid.stdout.strip()
+    fstype = lsblk_fstype.stdout.strip()
 
     if fstype == "hfsplus":
         # HFS+ (Mac-formatted iPod): requires sudo + force to get rw access.
@@ -112,26 +109,52 @@ def _mount_linux(device: str = "") -> str:
 
 
 def _find_ipod_block_device() -> str | None:
-    """Find iPod block device on Linux."""
+    """Find iPod block device on Linux.
+
+    Uses lsblk with FSTYPE to find the correct partition — the Apple disk
+    entry has the vendor/model, but we need the child partition with a real
+    filesystem (hfsplus or vfat). Picking the first partition by name would
+    select the wrong one on Mac-formatted iPods (3-partition layout).
+    """
     try:
         result = subprocess.run(
-            ["lsblk", "-o", "NAME,VENDOR,MODEL,TRAN", "-n", "-l"],
+            ["lsblk", "-o", "NAME,FSTYPE,VENDOR,MODEL,TRAN", "-n", "-l"],
             capture_output=True, text=True, timeout=10,
         )
-        for line in result.stdout.splitlines():
+        lines = result.stdout.splitlines()
+
+        # Find disk name from the Apple vendor entry
+        disk_name = None
+        for line in lines:
+            if "apple" in line.lower():
+                parts = line.split()
+                candidate = parts[0]
+                # Must be a disk (no trailing digit), e.g. "sda"
+                if not candidate[-1].isdigit():
+                    disk_name = candidate
+                    break
+
+        if not disk_name:
+            return None
+
+        # Among the partitions of that disk, return the one with a real
+        # filesystem (hfsplus preferred, then vfat). Skip empty FSTYPE lines.
+        for line in lines:
             parts = line.split()
-            if len(parts) >= 2 and "apple" in line.lower():
-                # Return the partition (usually sda1 or sdb1)
-                device_name = parts[0]
-                partition = f"/dev/{device_name}"
-                # Check if it's a partition (ends with number)
-                if device_name[-1].isdigit():
-                    return partition
-                # Otherwise look for partitions of this device
-                for line2 in result.stdout.splitlines():
-                    if line2.strip().startswith(device_name) and line2.strip() != device_name:
-                        return f"/dev/{line2.split()[0]}"
-                return f"/dev/{device_name}1"  # Guess first partition
+            if not parts:
+                continue
+            name = parts[0]
+            if name.startswith(disk_name) and name != disk_name and name[-1].isdigit():
+                fstype = parts[1] if len(parts) > 1 else ""
+                if fstype in ("hfsplus", "vfat"):
+                    return f"/dev/{name}"
+
+        # Fallback: last numbered partition of the disk
+        for line in reversed(lines):
+            parts = line.split()
+            if parts and parts[0].startswith(disk_name) and parts[0][-1].isdigit():
+                return f"/dev/{parts[0]}"
+
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     return None
