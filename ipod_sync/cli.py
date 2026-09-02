@@ -33,6 +33,10 @@ _CONFIG_KEYS = {
     "time":      ("download_time",            _parse_time),
     "limit":     ("max_tracks_per_playlist",  int),
     "playlists": ("daemon_playlists",         lambda v: [s.strip() for s in v.split(",") if s.strip()] if v.strip() else []),
+    "portal-port": ("portal_port",            int),
+    "notify-url": ("notify_url",              str),
+    "bt-mac":     ("proximity_bt_mac",        lambda v: v.strip().upper()),
+    "hotspot":    ("hotspot_when_offline",    lambda v: v.strip().lower() in ("1", "true", "yes", "on")),
     "music-dir": ("music_dir",                str),
 }
 
@@ -64,6 +68,10 @@ def config_show():
         ("max_tracks_per_playlist", str(config.max_tracks_per_playlist), "limit"),
         ("daemon_playlists",        ", ".join(config.daemon_playlists) or "[dim]all[/]", "playlists"),
         ("music_dir",               config.music_dir, "music-dir"),
+        ("portal_port",             str(config.portal_port), "portal-port"),
+        ("notify_url",              config.notify_url or "[dim]none[/]", "notify-url"),
+        ("proximity_bt_mac",        config.proximity_bt_mac or "[dim]none[/]", "bt-mac"),
+        ("hotspot_when_offline",    str(config.hotspot_when_offline), "hotspot"),
     ]
     for field, value, key in rows:
         table.add_row(field, value, key)
@@ -372,6 +380,41 @@ def setup():
 
     console.print("\nTo start the daemon:    ipod-sync daemon start")
     console.print("To run as a service:    see scripts/install-pi.sh")
+
+
+@cli.command()
+@click.option("--port", default=None, type=int, help="Port (default: config portal_port)")
+def portal(port):
+    """Run the setup/renewal web portal in the foreground (the daemon also serves it)."""
+    import logging
+    from ipod_sync.web.portal import serve, portal_host
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    config = Config.load()
+    port = port or config.portal_port
+    console.print(f"Portal: http://{portal_host()}:{port}")
+    serve(port)
+
+
+@cli.command()
+@click.argument("token", required=False)
+def session(token):
+    """Show Apple Music session status, or renew it with a media-user-token."""
+    from ipod_sync.web import session as sess
+    if token:
+        try:
+            st = sess.renew(token)
+        except sess.SessionError as e:
+            console.print(f"[red]Invalid token:[/] {e}")
+            sys.exit(1)
+        console.print(f"[green]Session renewed[/] — storefront {st['storefront']}, "
+                      f"{st['playlists']} playlists, expires {st['expires_at'][:10]}")
+        return
+    st = sess.status()
+    color = {"ok": "green", "expiring": "yellow"}.get(st["level"], "red")
+    console.print(f"[{color}]{st['level']}[/]  days_left={st['days_left']}  expires={st['expires_at']}  "
+                  f"storefront={st['storefront']}")
+    if st["last_error"]:
+        console.print(f"  last error: {st['last_error']['message']}")
 
 
 @cli.group()

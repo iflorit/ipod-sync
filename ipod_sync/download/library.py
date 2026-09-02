@@ -61,15 +61,33 @@ class AppleMusicClient:
     def _get_developer_token(self) -> str:
         c = httpx.Client(headers=HEADERS, follow_redirects=True, timeout=30)
         r = c.get(HOMEPAGE)
-        match = re.search(r"/(assets/index-legacy[~-][^/\"]+\.js)", r.text)
-        if not match:
+        # The web player ships several bundles (index~HASH.js, index-legacy~HASH.js);
+        # the developer token JWT has moved between them over time, so scan all.
+        bundles = list(dict.fromkeys(re.findall(r"/(assets/index[^/\"']*\.js)", r.text)))
+        if not bundles:
             raise LibraryError("index.js not found in Apple Music web player")
-        r = c.get(f"{HOMEPAGE}/{match.group(1)}")
-        tok = re.search(r'(?=eyJh)(.*?)(?=")', r.text)
-        if not tok:
-            raise LibraryError("Developer token not found")
-        c.close()
-        return tok.group(1)
+        jwt_re = re.compile(r'"(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)"')
+        try:
+            for bundle in bundles:
+                js = c.get(f"{HOMEPAGE}/{bundle}").text
+                for tok in jwt_re.findall(js):
+                    if self._is_web_play_token(tok):
+                        return tok
+        finally:
+            c.close()
+        raise LibraryError("Developer token not found")
+
+    @staticmethod
+    def _is_web_play_token(tok: str) -> bool:
+        """True if the JWT payload is an AMP web player token (iss=AMPWebPlay)."""
+        import base64
+        try:
+            payload = tok.split(".")[1]
+            payload += "=" * (-len(payload) % 4)
+            data = json.loads(base64.urlsafe_b64decode(payload))
+            return data.get("iss") == "AMPWebPlay"
+        except Exception:
+            return False
 
     def _get_storefront(self) -> str:
         r = self.client.get(f"{AMP_API}/v1/me/account", params={"meta": "subscription"})

@@ -30,6 +30,7 @@ class DaemonRunner:
             file_handler.setFormatter(fmt)
             root.addHandler(file_handler)
 
+        logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per API call otherwise
         self._log = logging.getLogger("daemon")
 
     def run(self) -> None:
@@ -46,11 +47,15 @@ class DaemonRunner:
         h, m = self.config.download_time
         self._log.info(f"Download time: {h:02d}:{m:02d} daily | Playlists: {playlists or 'all'}")
 
-        dl_thread = threading.Thread(target=self._download_loop, name="downloader", daemon=True)
-        watch_thread = threading.Thread(target=self._ipod_loop, name="watcher", daemon=True)
-
-        dl_thread.start()
-        watch_thread.start()
+        threads = [
+            threading.Thread(target=self._download_loop, name="downloader", daemon=True),
+            threading.Thread(target=self._ipod_loop, name="watcher", daemon=True),
+            threading.Thread(target=self._portal_loop, name="portal", daemon=True),
+            threading.Thread(target=self._session_loop, name="session", daemon=True),
+            threading.Thread(target=self._wifi_loop, name="wifi", daemon=True),
+        ]
+        for t in threads:
+            t.start()
 
         self._stop.wait()
         self._log.info("Daemon stopped.")
@@ -87,9 +92,7 @@ class DaemonRunner:
             try:
                 cookies = str(COOKIES_FILE)
                 if not Path(cookies).exists():
-                    self._log.warning("Cookies file not found — skipping download")
-                    self._stop.wait(timeout=interval_secs)
-                    continue
+                    raise FileNotFoundError(f"Cookies file not found: {cookies} — skipping download")
 
                 am = AppleMusicClient(cookies)
                 configured = self.config.daemon_playlists
@@ -130,6 +133,10 @@ class DaemonRunner:
 
             except Exception as e:
                 self._log.error(f"Download loop error: {e}")
+                if "Session expired" in str(e) or "media-user-token" in str(e):
+                    from ipod_sync.web import session
+                    session.record_error(str(e))
+                    self._notify("La sesión de Apple Music del iPod ha caducado. Acerca el iPhone y renuévala.")
 
             wait = self._secs_until_next_run()
             h, m = self.config.download_time
@@ -170,3 +177,117 @@ class DaemonRunner:
             # Wait until the iPod physically disconnects before polling again
             wait_for_disconnect(mount, stop_event=self._stop)
             self._log.info("iPod disconnected — watching for next connection...")
+
+    # --- portal / session / wifi -------------------------------------------------
+
+    def _daemon_state(self) -> dict:
+        from ipod_sync.config import load_library_index
+        from ipod_sync.ipod.detect import detect_ipod
+        h, m = self.config.download_time
+        mount = detect_ipod()
+        return {
+            "ipod": mount if mount and mount != "NOT_MOUNTED" else None,
+            "tracks": len(load_library_index().get("tracks", {})),
+            "download_time": f"{h:02d}:{m:02d}",
+        }
+
+    def _portal_loop(self) -> None:
+        from ipod_sync.web.portal import serve
+        try:
+            serve(self.config.portal_port, daemon_state=self._daemon_state, stop_event=self._stop)
+        except Exception as e:
+            self._log.error(f"Portal failed: {e}")
+
+    def _notify(self, text: str) -> None:
+        """Best-effort push via configured webhook (GET url?text=...)."""
+        if not self.config.notify_url:
+            return
+        try:
+            import httpx
+            httpx.get(self.config.notify_url, params={"text": text}, timeout=15)
+            self._log.info(f"Notified: {text}")
+        except Exception as e:
+            self._log.warning(f"Notify failed: {e}")
+
+    def _iphone_in_range(self) -> bool:
+        """Ping the paired iPhone over Bluetooth (l2ping needs root; the service runs as root)."""
+        import subprocess
+        mac = self.config.proximity_bt_mac
+        if not mac:
+            return False
+        try:
+            r = subprocess.run(["l2ping", "-c", "1", "-t", "3", mac],
+                               capture_output=True, text=True, timeout=10)
+            return r.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+    def _session_loop(self) -> None:
+        """Warn before the Apple Music token expires; nudge when the iPhone is nearby."""
+        from ipod_sync.web import session
+        last_nudge = 0.0
+        last_daily = 0.0
+        import time
+        while not self._stop.is_set():
+            now = time.time()
+            st = session.status()
+            if now - last_daily > 86400:
+                last_daily = now
+                if st["level"] == "ok":
+                    self._log.info(f"Apple Music session OK — {st['days_left']} days left")
+                else:
+                    self._log.warning(f"Apple Music session {st['level']} (days_left={st['days_left']})")
+            if st["level"] != "ok" and now - last_nudge > 6 * 3600 and self._iphone_in_range():
+                last_nudge = now
+                self._log.info("iPhone in Bluetooth range — sending renewal nudge")
+                self._notify("Tu iPhone está cerca del iPod: abre http://%s:%d para renovar la sesión de Apple Music."
+                             % (__import__("ipod_sync.web.portal", fromlist=["portal_host"]).portal_host(),
+                                self.config.portal_port))
+            self._stop.wait(timeout=60 if self.config.proximity_bt_mac else 3600)
+
+    def _wifi_loop(self) -> None:
+        """Provisioning fallback.
+
+        Raise the setup hotspot when there is no connectivity at all (no default
+        route) and either the device was never provisioned (no known Wi-Fi) or it
+        has been offline for 5 min. The hotspot holds wlan0, so it is dropped again
+        after 10 min to let NetworkManager retry the known networks; the cycle
+        repeats until one side succeeds.
+        """
+        import subprocess
+        import time
+        from ipod_sync.web import wifi
+
+        if not self.config.hotspot_when_offline:
+            return
+
+        def has_default_route() -> bool:
+            r = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True)
+            return bool(r.stdout.strip())
+
+        offline_since = None
+        hotspot_since = None
+        while not self._stop.is_set():
+            try:
+                mode = wifi.status().get("mode")
+                if mode == "hotspot":
+                    hotspot_since = hotspot_since or time.time()
+                    if time.time() - hotspot_since > 600:
+                        self._log.info("Hotspot timeout — dropping it to retry known Wi-Fi")
+                        wifi.hotspot_stop()
+                        hotspot_since = None
+                        offline_since = None
+                elif has_default_route():
+                    offline_since = None
+                    hotspot_since = None
+                else:
+                    offline_since = offline_since or time.time()
+                    never_provisioned = not wifi.known_networks()
+                    if never_provisioned or time.time() - offline_since > 300:
+                        wifi.hotspot_start()
+                        hotspot_since = time.time()
+                        self._log.info(f"No connectivity — hotspot {wifi.HOTSPOT_SSID!r} raised; "
+                                       f"portal at http://{wifi.HOTSPOT_IP}:{self.config.portal_port}")
+            except Exception as e:
+                self._log.error(f"Wi-Fi loop error: {e}")
+            self._stop.wait(timeout=15)

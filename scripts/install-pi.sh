@@ -25,9 +25,16 @@ EOF
 sudo udevadm control --reload-rules
 echo "  -> /etc/udev/rules.d/99-ipod.rules installed"
 
-# --- gamdl ---
+# --- pip: piwheels provides prebuilt ARMv6/ARMv7 wheels (pillow, pycryptodome...) ---
+# Without it, a Pi Zero (ARMv6, single core) would try to compile them from source.
+if ! grep -qs piwheels /etc/pip.conf; then
+    printf "[global]\nextra-index-url=https://www.piwheels.org/simple\n" | sudo tee /etc/pip.conf > /dev/null
+    echo "  -> /etc/pip.conf: piwheels index added"
+fi
+
+# --- gamdl (>=3.8: older releases can no longer find the Apple Music developer token) ---
 echo "Installing gamdl..."
-pip install -q --break-system-packages gamdl
+pip install -q --break-system-packages "gamdl>=3.8"
 
 # --- ipod-sync ---
 echo "Installing ipod-sync..."
@@ -103,6 +110,9 @@ echo "  -> Start now: sudo systemctl start ipod-sync"
 
 echo ""
 echo "=== Installation complete ==="
+echo ""
+echo "Self-test (libgpod + ffmpeg, no iPod needed):"
+echo "  python3 scripts/selftest-sync.py"
 echo ""
 echo "Next steps:"
 echo "  1. Edit ~/.config/ipod-sync/cookies.txt"

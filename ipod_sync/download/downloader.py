@@ -25,6 +25,7 @@ def download_track(config: Config, track: dict, cookies_path: str) -> str:
     result = subprocess.run(
         [
             "gamdl",
+            "--no-config-file",  # deterministic: ignore ~/.gamdl/config.ini leftovers
             "--cookies-path", cookies_path,
             "--output-path", output_dir,
             "--log-level", "WARNING",
@@ -82,6 +83,7 @@ def download_tracks_batch(config: Config, tracks: list[dict], cookies_path: str)
     result = subprocess.run(
         [
             "gamdl",
+            "--no-config-file",  # deterministic: ignore ~/.gamdl/config.ini leftovers
             "--cookies-path", cookies_path,
             "--output-path", config.music_dir,
             "--log-level", "INFO",
@@ -106,29 +108,33 @@ def download_tracks_batch(config: Config, tracks: list[dict], cookies_path: str)
     return paths
 
 
+def _fold(s: str) -> str:
+    """Lowercase and drop everything but letters/digits.
+
+    gamdl sanitizes filenames (drops ? : / " etc.), so comparing raw titles
+    against filenames fails for e.g. "Re: Stacks" or "What If I Told You?".
+    """
+    return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
 def _find_track_file(base_dir: str, track: dict) -> Path | None:
     """Find a downloaded track file by searching the output directory."""
     base = Path(base_dir)
-    title = track.get("title", "")
-    artist = track.get("artist", "")
+    title = _fold(track.get("title", ""))
+    artist_words = track.get("artist", "").lower().split()
+    artist = _fold(artist_words[0]) if artist_words else ""
+    if not title:
+        return None
 
     # gamdl uses template: {album_artist}/{album}/{track:02d} {title}.m4a
-    # Search for matching .m4a files
-    for m4a in base.rglob("*.m4a"):
-        # Match by title in filename
-        fname = m4a.stem.lower()
-        if title.lower() in fname:
-            # Verify artist in parent dirs
-            path_str = str(m4a).lower()
-            if artist.lower().split()[0] in path_str:
-                return m4a
+    candidates = [m4a for m4a in base.rglob("*.m4a") if title in _fold(m4a.stem)]
 
-    # Broader search: just title match
-    for m4a in base.rglob("*.m4a"):
-        if title.lower() in m4a.stem.lower():
+    # Prefer a match whose path also contains the artist
+    for m4a in candidates:
+        if artist and artist in _fold(str(m4a)):
             return m4a
 
-    return None
+    return candidates[0] if candidates else None
 
 
 def verify_track(file_path: str) -> bool:

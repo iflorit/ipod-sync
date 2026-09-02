@@ -30,6 +30,10 @@ class Config:
     download_time: list = field(default_factory=lambda: [3, 0])  # [hour, minute]
     max_tracks_per_playlist: int = 100
     daemon_playlists: list = field(default_factory=list)
+    portal_port: int = 8080            # setup/renewal portal (http://<host>.local:8080)
+    notify_url: str = ""               # optional webhook (e.g. Telegram sendMessage URL); GET with ?text=
+    proximity_bt_mac: str = ""         # paired iPhone BT address; nudge to renew when in range
+    hotspot_when_offline: bool = True  # raise "iPod-Setup" AP if no Wi-Fi for a while
 
     @classmethod
     def load(cls) -> "Config":

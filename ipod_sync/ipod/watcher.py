@@ -40,11 +40,15 @@ def wait_for_ipod(stop_event=None, poll_interval: int = POLL_INTERVAL) -> str | 
 
 
 def wait_for_disconnect(mount_point: str, stop_event=None, poll_interval: int = POLL_INTERVAL) -> None:
-    """Block until the iPod at mount_point is no longer detected."""
+    """Block until the iPod is physically gone (not mounted AND not on the USB bus).
+
+    Must NOT go through find_ipod_mount(): after eject the iPod is still on USB,
+    detect_ipod() returns NOT_MOUNTED and find_ipod_mount() would remount it
+    read-write 5 s after logging "safe to disconnect".
+    """
     while True:
         if stop_event and stop_event.is_set():
             return
-        current = find_ipod_mount()
-        if current != mount_point:
+        if detect_ipod() is None:
             return
         time.sleep(poll_interval)
